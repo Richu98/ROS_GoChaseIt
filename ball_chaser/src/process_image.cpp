@@ -8,52 +8,57 @@ ros::ServiceClient client;
 // This function calls the command_robot service to drive the robot in the specified direction
 void drive_robot(float lin_x, float ang_z)
 {
-    // Request a service and pass the velocities to it to drive the robot
-    ball_chaser::DriveToTarget service;
-    service.request.linear_x = lin_x;
-    service.request.angular_z = ang_z;
-    // Call command_robot service
-    if (!client.call(service)) {
-        ROS_ERROR("Failed to call service command_robot");
-    }
+    // TODO (done): Request a service and pass the velocities to it to drive the robot
+    ball_chaser::DriveToTarget cmd;
+	cmd.request.linear_x = lin_x;
+    cmd.request.angular_z = ang_z;
+
+	bool result = client.call(cmd);
+
+    if (!result){
+        ROS_ERROR("Error: failed to execute drive_robot command");
+	}
 }
 
 // This callback function continuously executes and reads the image data
 void process_image_callback(const sensor_msgs::Image img)
 {
 
-    // Loop through each pixel in the image and check if there's a bright white one
+    int fully_saturated = 255;
+
+    // TODO: Loop through each pixel in the image and check if there's a bright white one
     // Then, identify if this pixel falls in the left, mid, or right side of the image
     // Depending on the white ball position, call the drive_bot function and pass velocities to it
     // Request a stop when there's no white ball seen by the camera
 
-    int white_pixel = 255;
-    bool is_ball_found = false;
-    float lin_x = 0;
-    float ang_z = 0;
-    for (int i = 0; i < img.height * img.step; i += 3) {
-	if (img.data[i] == white_pixel && img.data[i + 1] == white_pixel && img.data[i + 2] == white_pixel) {
-	    is_ball_found = true;
-	    int row_found = i % img.step;
-	    if (row_found < img.step / 3) {
-            // Turn Left
-            lin_x = 0.0;
-            ang_z = 0.2;
-	    }
-	    else if (row_found > img.step * 2 / 3) {
-            // Turn Right
-            lin_x = 0.0;
-            ang_z = -0.2;
-	    }
-	    else {
-            // Move Forward
-            lin_x = 0.5;
-    		ang_z = 0.0;
-	    }
-	        break;
-        }
-    }	
-    drive_robot(lin_x, ang_z);
+	float white_center_of_mass = -1;
+	float num_white_pixels = 0;
+
+    // Loop through each pixel in the image and check if it's white
+    for (int i = 0; i < img.height; i++) {
+		for (int j = 0; j < img.step; j++) {
+	        if (img.data[i*img.step+j] == fully_saturated &&
+		   img.data[i*img.step+j+1] == fully_saturated &&
+		   img.data[i*img.step+j+2] == fully_saturated) {
+				white_center_of_mass = white_center_of_mass + j - img.step/2.0;
+				num_white_pixels = num_white_pixels + 1.0;
+	        }
+		}
+    }
+
+	float turn_gain = -1.0/img.step*(M_PI/2.0);
+
+	white_center_of_mass = white_center_of_mass/num_white_pixels;
+
+	if (num_white_pixels > 0)				// ball found - drive towards it
+	{
+		ROS_INFO("Ball found at COM = %1.2f", (float)white_center_of_mass);
+		drive_robot(0.5,turn_gain*white_center_of_mass);
+	}
+	else										// no ball found - request stop
+	{
+		drive_robot(0, 0);
+	}
 }
 
 int main(int argc, char** argv)
